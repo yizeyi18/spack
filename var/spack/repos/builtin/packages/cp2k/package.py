@@ -109,7 +109,7 @@ class Cp2k(MakefilePackage, CudaPackage, CMakePackage, ROCmPackage):
         " are enabled",
     )
     variant("pytorch", default=False, description="Enable libtorch support")
-    variant("quip", default=False, description="Enable quip support")
+    # variant("quip", default=False, description="Enable quip support")
     variant("mpi_f08", default=False, description="Use MPI F08 module")
 
     variant(
@@ -221,6 +221,7 @@ class Cp2k(MakefilePackage, CudaPackage, CMakePackage, ROCmPackage):
         depends_on("cosma@2.6.3:", when="@2023.2:")
         depends_on("cosma+cuda", when="+cuda")
         depends_on("cosma+rocm", when="+rocm")
+        depends_on("cosma+shared", when="build_system=cmake")
         conflicts("~mpi")
         # COSMA support was introduced in 8+
         conflicts("@:7")
@@ -236,6 +237,12 @@ class Cp2k(MakefilePackage, CudaPackage, CMakePackage, ROCmPackage):
         depends_on("elpa@2021.05:", when="@8.3:")
         depends_on("elpa@2021.11.001:", when="@9.1:")
         depends_on("elpa@2023.05.001:", when="@2023.2:")
+
+    with when("+pytorch"):
+        depends_on("py-torch")
+        depends_on("py-torch+cuda", when="+cuda")
+        depends_on("py-torch+rocm", when="+rocm")
+
 
     with when("+dlaf"):
         conflicts(
@@ -283,6 +290,22 @@ class Cp2k(MakefilePackage, CudaPackage, CMakePackage, ROCmPackage):
         depends_on("libvori@220621:", when="@2023.1:")
         # libvori support was introduced in 8+
         conflicts("@:7")
+        # build with cmake requires PIC
+        # https://github.com/spack/spack/issues/41445#issuecomment-1845536752
+        depends_on("libvori+pic", when="build_system=cmake")
+
+    supported_cuda_arch_list = ("35", "37", "60", "70", "80")
+    supported_rocm_arch_list = ("gfx906", "gfx908", "gfx90a", "gfx90a:xnack-", "gfx90a:xnack+")
+
+    # cosma and spla uses nonstandard +rocm
+    # and therefore have no amdgpu_target variant
+    with when("+rocm"):
+        for arch in ROCmPackage.amdgpu_targets:
+            depends_on(f"elpa amdgpu_target={arch}", when=f"+elpa amdgpu_target={arch}")
+            depends_on(f"dla-future amdgpu_target={arch}", when=f"+dlaf amdgpu_target={arch}")
+            depends_on(f"sirius amdgpu_target={arch}", when=f"+sirius amdgpu_target={arch}")
+            depends_on(f"dbcsr amdgpu_target={arch}", when=f"build_system=cmake amdgpu_target={arch}")
+            depends_on(f"py-torch amdgpu_target={arch}", when=f"+pytorch amdgpu_target={arch}")
 
     # the bundled libcusmm uses numpy in the parameter prediction (v7+)
     # which is written using Python 3
@@ -304,7 +327,7 @@ class Cp2k(MakefilePackage, CudaPackage, CMakePackage, ROCmPackage):
         depends_on("dbcsr+rocm", when="+rocm")
 
     with when("@2022: +rocm"):
-        depends_on("hipblas")
+        depends_on("hipblas +rocm")
         depends_on("hipfft")
 
     # CP2K needs compiler specific compilation flags, e.g. optflags
@@ -984,7 +1007,7 @@ class CMakeBuilder(spack.build_systems.cmake.CMakeBuilder):
             self.define_from_variant("CP2K_USE_SPGLIB", "spglib"),
             self.define_from_variant("CP2K_USE_VORI", "libvori"),
             self.define_from_variant("CP2K_USE_SPLA", "spla"),
-            self.define_from_variant("CP2K_USE_QUIP", "quip"),
+            # self.define_from_variant("CP2K_USE_QUIP", "quip"),
             self.define_from_variant("CP2K_USE_MPI_F08", "mpi_f08"),
         ]
 
